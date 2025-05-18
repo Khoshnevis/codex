@@ -152,3 +152,19 @@ async def previous_history(sig_id: str, before_ts: int):
             return dict(zip(keys, row))
         return None
 
+async def history_diff(sig_id: str):
+    latest = await latest_history(sig_id)
+    if not latest:
+        return None
+    prev = await previous_history(sig_id, latest["ts"])
+    diff = None
+    if prev:
+        diff = {}
+        for k, v in latest.items():
+            if k in {"ts", "name"}:
+                continue
+            pv = prev.get(k)
+            diff[k] = (v - pv) if (v is not None and pv is not None) else None
+    return {"latest": latest, "previous": prev, "diff": diff}
+
+

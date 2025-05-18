@@ -1,55 +1,61 @@
-import asyncio, logging, os, re
+import asyncio
+import logging
+import os
+import re
 from contextlib import suppress
 
 import aiohttp
-import telegram.error                         # ← NEW
+import telegram.error
 from dotenv import load_dotenv
 from slugify import slugify
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     Application, CallbackQueryHandler, CommandHandler,
-    ContextTypes, MessageHandler, filters
+    ContextTypes, MessageHandler, filters,
 )
 
 import db
+import scraper
 
 load_dotenv()
 
-BOT_TOKEN      = os.getenv("BOT_TOKEN")
-PORT           = int(os.getenv("PORT", "8081"))
-WEBHOOK_URL    = os.getenv("WEBHOOK_URL", "").rstrip("/")
-INITIAL_ADMIN  = int(os.getenv("ADMIN_TELEGRAM_ID", "0") or 0)
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+PORT = int(os.getenv("PORT", "8081"))
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "").rstrip("/")
+INITIAL_ADMIN = int(os.getenv("ADMIN_TELEGRAM_ID", "0") or 0)
+SCRAPE_INTERVAL = int(os.getenv("SCRAPE_INTERVAL", "3600"))
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s | %(message)s")
 logger = logging.getLogger(__name__)
 
-re_sig  = re.compile(r"signals?\/(\d+)", re.I)
-re_url  = re.compile(r"https?://\S+", re.I)
+re_sig = re.compile(r"signals?/(\d+)", re.I)
+re_url = re.compile(r"https?://\S+", re.I)
 re_name = re.compile(r"^([^|]+)\|(.+)$", re.S)
 
 # ---------- keyboards ----------
 def main_kb():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("📈 Manage Signals", callback_data="manage_sig")],
-        [InlineKeyboardButton("👥 Manage Users",   callback_data="manage_usr")],
+        [InlineKeyboardButton("👥 Manage Users", callback_data="manage_usr")],
     ])
 
 def sig_kb():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("➕ Add",  callback_data="sig_add")],
-        [InlineKeyboardButton("➖ Rem",  callback_data="sig_del")],
-        [InlineKeyboardButton("📜 List",callback_data="sig_list")],
-        [InlineKeyboardButton("⬅️ Back",callback_data="back")],
+        [InlineKeyboardButton("➕ Add", callback_data="sig_add")],
+        [InlineKeyboardButton("➖ Rem", callback_data="sig_del")],
+        [InlineKeyboardButton("📜 List", callback_data="sig_list")],
+        [InlineKeyboardButton("📊 Stats", callback_data="sig_stats")],
+        [InlineKeyboardButton("⬅ Back", callback_data="back")],
     ])
 
 def usr_kb():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("➕ Add",  callback_data="usr_add")],
-        [InlineKeyboardButton("➖ Rem",  callback_data="usr_del")],
+        [InlineKeyboardButton("➕ Add", callback_data="usr_add")],
+        [InlineKeyboardButton("➖ Rem", callback_data="usr_del")],
         [InlineKeyboardButton("⭐ Toggle admin", callback_data="usr_toggle")],
-        [InlineKeyboardButton("📜 List",callback_data="usr_list")],
-        [InlineKeyboardButton("⬅️ Back",callback_data="back")],
+        [InlineKeyboardButton("📜 List", callback_data="usr_list")],
+        [InlineKeyboardButton("⬅ Back", callback_data="back")],
     ])
 
 # ---------- helpers ----------
@@ -68,16 +74,29 @@ async def url_ok(url: str) -> bool:
     except Exception:
         return False
 
+async def scrape_all():
+    rows = await db.list_signals()
+    for r in rows:
+        try:
+            data = await scraper.scrape(r["url"])
+            await db.add_history(r["id"], **data)
+        except Exception as e:
+            logger.exception("scrape %s failed: %s", r["id"], e)
+
+async def periodic_scrape():
+    while True:
+        await scrape_all()
+        await asyncio.sleep(SCRAPE_INTERVAL)
+
 # ---------- handlers ----------
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not await db.is_admin(update.effective_user.id):
-        await update.message.reply_text("⛔️ Not authorised.")
+        await update.message.reply_text("⛔ Unauthorized")
         return
     await update.message.reply_text("Welcome!", reply_markup=main_kb())
 
 async def menu_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
-    # ---- tolerate stale callbacks ----
     try:
         await q.answer()
     except telegram.error.BadRequest as e:
@@ -86,38 +105,39 @@ async def menu_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     d = q.data
 
     if not await db.is_admin(q.from_user.id):
-        await q.edit_message_text("⛔️ Unauthorized.")
+        await q.edit_message_text("⛔ Unauthorized")
         return
 
-    # ----- Signals submenu -----
     if d == "manage_sig":
         await q.edit_message_text("Signal menu:", reply_markup=sig_kb())
 
     elif d == "sig_list":
         rows = await db.list_signals()
-        text = ("📜 *Signals*:\n" +
-                "\n".join(f"{r['id']} → {r['url']}" for r in rows)) if rows else "ℹ️ None."
+        text = "📜 *Signals*:\n" + "\n".join(f"{r['id']} → {r['url']}" for r in rows) if rows else "ℹ None"
         await q.edit_message_text(text, parse_mode="Markdown", reply_markup=sig_kb())
 
-    # ----- Users submenu -----
+    elif d == "sig_stats":
+        ctx.user_data["await"] = "sig_stats"
+        await q.edit_message_text(
+            "Send signal ID for stats.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅ Back", callback_data="back")]])
+        )
+
     elif d == "manage_usr":
         await q.edit_message_text("User menu:", reply_markup=usr_kb())
 
     elif d == "usr_list":
         rows = await db.list_users()
         if rows:
-            lines = [f"{'⭐' if r['admin'] else '▫️'} `{r['id']}` – *{slugify(r['name'] or '-') }* :: {r['desc'] or '-'}"
-                     for r in rows]
+            lines = [f"{'⭐' if r['admin'] else '▫'} {r['id']} {r['name'] or ''}" for r in rows]
             text = "📜 *Users*:\n" + "\n".join(lines)
         else:
-            text = "ℹ️ No users."
+            text = "ℹ None"
         await q.edit_message_text(text, parse_mode="Markdown", reply_markup=usr_kb())
 
-    # ----- Navigation -----
-    elif d in ("back", "back_main"):          # ← accepts legacy data
+    elif d == "back":
         await q.edit_message_text("Menu:", reply_markup=main_kb())
 
-    # ----- Awaiting text -----
     elif d in ("sig_add", "sig_del", "usr_add", "usr_del", "usr_toggle"):
         ctx.user_data["await"] = d
         prompt = {
@@ -125,26 +145,25 @@ async def menu_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             "sig_del": "Send signal ID to remove.",
             "usr_add": "Send: <telegram_id>|<name or note>",
             "usr_del": "Send user ID to remove.",
-            "usr_toggle": "Send user ID to promote/demote."
+            "usr_toggle": "Send user ID to promote/demote.",
         }[d]
         await q.edit_message_text(
             prompt,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Cancel", callback_data="back")]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅ Back", callback_data="back")]])
         )
 
 async def text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     act = ctx.user_data.pop("await", None)
     txt = update.message.text.strip()
-    me  = update.effective_user
+    me = update.effective_user
 
     if not await db.is_admin(me.id):
-        await update.message.reply_text("⛔️ Not authorised.")
+        await update.message.reply_text("⛔ Unauthorized")
         return
     if not act:
         await update.message.reply_text("Use the buttons.")
         return
 
-    # ---------- Signals ----------
     if act == "sig_add":
         murl = re_url.search(txt)
         if not murl:
@@ -167,7 +186,6 @@ async def text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await db.remove_signal(sid)
         await update.message.reply_text("Removed.", reply_markup=main_kb())
 
-    # ---------- Users ----------
     elif act == "usr_add":
         m = re_name.match(txt)
         if not m:
@@ -196,8 +214,29 @@ async def text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         new_state = not await db.is_admin(uid)
         await db.set_admin(uid, new_state)
         await update.message.reply_text(
-            "⭐ Promoted." if new_state else "⬇️ Demoted.", reply_markup=main_kb()
+            "⭐ Promoted." if new_state else "⬇ Demoted.",
+            reply_markup=main_kb(),
         )
+
+    elif act == "sig_stats":
+        sid = re.sub(r"\D", "", txt)
+        info = await db.history_diff(sid)
+        if not info:
+            return await update.message.reply_text("No history.", reply_markup=main_kb())
+        latest = info["latest"]
+        diff = info["diff"]
+        lines = [f"*{latest['name']}* ({sid})"]
+        for k in ["growth", "drawdown", "monthly_growth", "weeks", "trades", "profit_trades", "loss_trades"]:
+            val = latest.get(k)
+            if val is None:
+                continue
+            text = f"{k}: {val}"
+            if diff and diff.get(k) is not None:
+                dv = diff[k]
+                sign = "+" if dv > 0 else ""
+                text += f" ({sign}{dv})"
+            lines.append(text)
+        await update.message.reply_text("\n".join(lines), parse_mode="Markdown", reply_markup=main_kb())
 
 # ---------- bootstrap ----------
 if __name__ == "__main__":
@@ -214,9 +253,10 @@ if __name__ == "__main__":
     app.add_handler(CallbackQueryHandler(menu_cb))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text))
 
+    loop.create_task(periodic_scrape())
+
     app.run_webhook(
         listen="0.0.0.0", port=PORT, url_path="telegram",
         webhook_url=f"{WEBHOOK_URL}/telegram",
-        drop_pending_updates=True
+        drop_pending_updates=True,
     )
-
