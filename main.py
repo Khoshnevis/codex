@@ -49,6 +49,13 @@ def sig_kb():
         [InlineKeyboardButton("⬅ Back", callback_data="back")],
     ])
 
+def stats_kb(rows):
+    kb = [
+        [InlineKeyboardButton(r["id"], callback_data=f"stat_{r['id']}")] for r in rows
+    ]
+    kb.append([InlineKeyboardButton("⬅ Back", callback_data="manage_sig")])
+    return InlineKeyboardMarkup(kb)
+
 def usr_kb():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("➕ Add", callback_data="usr_add")],
@@ -117,11 +124,37 @@ async def menu_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text(text, parse_mode="Markdown", reply_markup=sig_kb())
 
     elif d == "sig_stats":
-        ctx.user_data["await"] = "sig_stats"
-        await q.edit_message_text(
-            "Send signal ID for stats.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅ Back", callback_data="back")]])
-        )
+        rows = await db.list_signals()
+        if not rows:
+            await q.edit_message_text("ℹ None", reply_markup=sig_kb())
+        else:
+            await q.edit_message_text(
+                "Select signal:",
+                reply_markup=stats_kb(rows),
+            )
+
+    elif d.startswith("stat_"):
+        sid = d.split("_", 1)[1]
+        info = await db.history_diff(sid)
+        if not info:
+            await q.edit_message_text("No history.", reply_markup=sig_kb())
+        else:
+            latest = info["latest"]
+            diff = info["diff"]
+            lines = [f"*{latest['name']}* ({sid})"]
+            for k in ["growth", "drawdown", "monthly_growth", "weeks", "trades", "profit_trades", "loss_trades"]:
+                val = latest.get(k)
+                if val is None:
+                    continue
+                text = f"{k}: {val}"
+                if diff and diff.get(k) is not None:
+                    dv = diff[k]
+                    sign = "+" if dv > 0 else ""
+                    text += f" ({sign}{dv})"
+                lines.append(text)
+            await q.edit_message_text(
+                "\n".join(lines), parse_mode="Markdown", reply_markup=sig_kb()
+            )
 
     elif d == "manage_usr":
         await q.edit_message_text("User menu:", reply_markup=usr_kb())
@@ -217,26 +250,6 @@ async def text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             "⭐ Promoted." if new_state else "⬇ Demoted.",
             reply_markup=main_kb(),
         )
-
-    elif act == "sig_stats":
-        sid = re.sub(r"\D", "", txt)
-        info = await db.history_diff(sid)
-        if not info:
-            return await update.message.reply_text("No history.", reply_markup=main_kb())
-        latest = info["latest"]
-        diff = info["diff"]
-        lines = [f"*{latest['name']}* ({sid})"]
-        for k in ["growth", "drawdown", "monthly_growth", "weeks", "trades", "profit_trades", "loss_trades"]:
-            val = latest.get(k)
-            if val is None:
-                continue
-            text = f"{k}: {val}"
-            if diff and diff.get(k) is not None:
-                dv = diff[k]
-                sign = "+" if dv > 0 else ""
-                text += f" ({sign}{dv})"
-            lines.append(text)
-        await update.message.reply_text("\n".join(lines), parse_mode="Markdown", reply_markup=main_kb())
 
 # ---------- bootstrap ----------
 if __name__ == "__main__":
