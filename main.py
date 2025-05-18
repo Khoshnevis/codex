@@ -7,7 +7,6 @@ from contextlib import suppress
 import aiohttp
 import telegram.error
 from dotenv import load_dotenv
-from slugify import slugify
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     Application, CallbackQueryHandler, CommandHandler,
@@ -149,8 +148,16 @@ async def menu_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 text = f"{k}: {val}"
                 if diff and diff.get(k) is not None:
                     dv = diff[k]
-                    sign = "+" if dv > 0 else ""
-                    text += f" ({sign}{dv})"
+                    if dv > 0:
+                        sign = "+"
+                        arrow = "\u2b06"  # upward arrow
+                    elif dv < 0:
+                        sign = ""
+                        arrow = "\u2b07"  # downward arrow
+                    else:
+                        sign = ""
+                        arrow = ""
+                    text += f" ({arrow}{sign}{dv})"
                 lines.append(text)
             await q.edit_message_text(
                 "\n".join(lines), parse_mode="Markdown", reply_markup=sig_kb()
