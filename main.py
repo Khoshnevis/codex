@@ -12,6 +12,7 @@ from telegram.ext import (
 )
 
 import db
+from db import history_diff
 
 load_dotenv()
 
@@ -196,8 +197,42 @@ async def text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         new_state = not await db.is_admin(uid)
         await db.set_admin(uid, new_state)
         await update.message.reply_text(
-            "⭐ Promoted." if new_state else "⬇️ Demoted.", reply_markup=main_kb()
+            "⭐ Promoted." if new_state else "⬇ Demoted.",
+            reply_markup=main_kb(),
         )
+
+async def stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not await db.is_admin(update.effective_user.id):
+        await update.message.reply_text("⛔")
+        return
+    if not ctx.args:
+        await update.message.reply_text("Usage: /stats <signal_id>")
+        return
+    sid = ctx.args[0]
+    info = await history_diff(sid)
+    if not info:
+        await update.message.reply_text("No data.")
+        return
+    cur = info["current"]
+    diff = info.get("diff") or {}
+    def fmt(label, key):
+        val = cur.get(key)
+        d = diff.get(key)
+        if d is not None and d != 0:
+            sign = "+" if d > 0 else ""
+            return f"{label}: {val} ({sign}{d})"
+        return f"{label}: {val}"
+    lines = [
+        f"📊 *{cur.get('name') or sid}*",
+        fmt("Growth", "growth"),
+        fmt("Drawdown", "drawdown"),
+        fmt("Monthly", "monthly_growth"),
+        fmt("Weeks", "weeks"),
+        fmt("Trades", "trades"),
+        fmt("Profit", "profit_trades"),
+        fmt("Loss", "loss_trades"),
+    ]
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 # ---------- bootstrap ----------
 if __name__ == "__main__":
@@ -211,6 +246,7 @@ if __name__ == "__main__":
 
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CallbackQueryHandler(menu_cb))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text))
 
