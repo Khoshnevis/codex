@@ -167,3 +167,4 @@ async def history_diff(sig_id: str):
             diff[k] = (v - pv) if (v is not None and pv is not None) else None
     return {"latest": latest, "previous": prev, "diff": diff}
 
+
