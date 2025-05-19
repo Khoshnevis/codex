@@ -204,7 +204,7 @@ async def menu_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         else:
             latest = info["latest"]
             diff = info["diff"]
-            lines = [f"*{md2(latest['name'])}* \\({sid}\\)"]
+            lines = [f"*{md2(latest['name'])}* ({sid})"]
             for k in [
                 "growth",
                 "drawdown",
@@ -336,7 +336,8 @@ async def text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
 
 async def report_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    if not await db.is_admin(update.effective_user.id):
+    uid = update.effective_user.id
+    if not (await db.is_admin(uid) or await db.user_exists(uid)):
         await update.message.reply_text("⛔ Unauthorized")
         return
     if len(ctx.args) < 3:
@@ -378,6 +379,7 @@ if __name__ == "__main__":
     APP = app
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("me", me_cmd))
+    app.add_handler(CommandHandler("report", report_cmd))
     app.add_handler(CallbackQueryHandler(menu_cb))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text))
 
