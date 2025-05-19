@@ -24,6 +24,7 @@ PORT = int(os.getenv("PORT", "8081"))
 WEBHOOK_URL = os.getenv("WEBHOOK_URL", "").rstrip("/")
 INITIAL_ADMIN = int(os.getenv("ADMIN_TELEGRAM_ID", "0") or 0)
 SCRAPE_INTERVAL = int(os.getenv("SCRAPE_INTERVAL", "3600"))
+APP = None
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s | %(message)s")
@@ -51,7 +52,7 @@ def sig_kb():
 
 def stats_kb(rows):
     kb = [
-        [InlineKeyboardButton(r["id"], callback_data=f"stat_{r['id']}")] for r in rows
+        [InlineKeyboardButton(f"{r['name']} ({r['id']})" if r.get('name') else r['id'], callback_data=f"stat_{r['id']}")] for r in rows
     ]
     kb.append([InlineKeyboardButton("⬅ Back", callback_data="manage_sig")])
     return InlineKeyboardMarkup(kb)
@@ -87,6 +88,21 @@ async def scrape_all():
         try:
             data = await scraper.scrape(r["url"])
             await db.add_history(r["id"], **data)
+            await db.update_signal_info(r["id"], name=data.get("name"), weeks=data.get("weeks"), latest_trade=data.get("latest_trade"), start_year=data.get("start_year"))
+            info = await db.history_diff(r["id"])
+            if info and info.get("diff"):
+                changes = []
+                for k, dv in info["diff"].items():
+                    if dv:
+                        changes.append(f"{k}: {dv:+}")
+                if changes:
+                    text = f"\u2139 Updates for {info['latest']['name']} ({r['id']}):\n" + "\n".join(changes)
+                    uids = await db.list_user_ids()
+                    for uid in uids:
+                        try:
+                            await APP.bot.send_message(uid, text)
+                        except Exception:
+                            pass
         except Exception as e:
             logger.exception("scrape %s failed: %s", r["id"], e)
         if idx != len(rows) - 1:
@@ -148,17 +164,20 @@ async def menu_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 "growth",
                 "drawdown",
                 "monthly_growth",
-                "start_year",
-                "latest_trade",
                 "weeks",
                 "trades",
                 "profit_trades",
                 "loss_trades",
+                "start_year",
+                "latest_trade",
             ]:
                 val = latest.get(k)
                 if val is None:
                     continue
-                text = f"{k}: {val}"
+                if k == "latest_trade" and isinstance(val, (int, float)):
+                    text = f"{k}: {val}m"
+                else:
+                    text = f"{k}: {val}"
                 if diff and diff.get(k) is not None:
                     dv = diff[k]
                     if dv > 0:
@@ -282,6 +301,7 @@ if __name__ == "__main__":
     loop.run_until_complete(ensure_root())
 
     app = Application.builder().token(BOT_TOKEN).build()
+    APP = app
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(menu_cb))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text))
