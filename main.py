@@ -144,7 +144,17 @@ async def menu_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             latest = info["latest"]
             diff = info["diff"]
             lines = [f"*{latest['name']}* ({sid})"]
-            for k in ["growth", "drawdown", "monthly_growth", "weeks", "trades", "profit_trades", "loss_trades"]:
+            for k in [
+                "growth",
+                "drawdown",
+                "monthly_growth",
+                "start_year",
+                "latest_trade",
+                "weeks",
+                "trades",
+                "profit_trades",
+                "loss_trades",
+            ]:
                 val = latest.get(k)
                 if val is None:
                     continue
