@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS signal_history (
     name           TEXT,
     drawdown       REAL,
     monthly_growth REAL,
+    start_year     INTEGER,
+    latest_trade   TEXT,
     weeks          INTEGER,
     growth         REAL,
     trades         INTEGER,
@@ -34,6 +36,13 @@ CREATE TABLE IF NOT EXISTS signal_history (
 async def init():
     async with aiosqlite.connect(DB_PATH) as db:
         await db.executescript(_SCHEMA)
+        # add new columns if database created earlier
+        cur = await db.execute("PRAGMA table_info(signal_history)")
+        cols = [r[1] async for r in cur]
+        if "start_year" not in cols:
+            await db.execute("ALTER TABLE signal_history ADD COLUMN start_year INTEGER")
+        if "latest_trade" not in cols:
+            await db.execute("ALTER TABLE signal_history ADD COLUMN latest_trade TEXT")
         await db.commit()
 
 # -------- users --------
@@ -109,11 +118,34 @@ async def remove_signal(sig_id: str) -> int:
 
 # -------- signal history --------
 async def add_history(sig_id: str, **data):
-    cols = ["sig_id", "ts", "name", "drawdown", "monthly_growth",
-            "weeks", "growth", "trades", "profit_trades", "loss_trades"]
-    values = [sig_id, data.get("ts"), data.get("name"), data.get("drawdown"),
-              data.get("monthly_growth"), data.get("weeks"), data.get("growth"),
-              data.get("trades"), data.get("profit_trades"), data.get("loss_trades")]
+    cols = [
+        "sig_id",
+        "ts",
+        "name",
+        "drawdown",
+        "monthly_growth",
+        "start_year",
+        "latest_trade",
+        "weeks",
+        "growth",
+        "trades",
+        "profit_trades",
+        "loss_trades",
+    ]
+    values = [
+        sig_id,
+        data.get("ts"),
+        data.get("name"),
+        data.get("drawdown"),
+        data.get("monthly_growth"),
+        data.get("start_year"),
+        data.get("latest_trade"),
+        data.get("weeks"),
+        data.get("growth"),
+        data.get("trades"),
+        data.get("profit_trades"),
+        data.get("loss_trades"),
+    ]
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             f"INSERT OR IGNORE INTO signal_history ({', '.join(cols)})"
@@ -125,30 +157,34 @@ async def add_history(sig_id: str, **data):
 async def latest_history(sig_id: str):
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute(
-            "SELECT ts,name,drawdown,monthly_growth,weeks,growth,trades,"
-            "profit_trades,loss_trades FROM signal_history WHERE sig_id=?"
-            " ORDER BY ts DESC LIMIT 1",
+            "SELECT ts,name,drawdown,monthly_growth,start_year,latest_trade,"
+            "weeks,growth,trades,profit_trades,loss_trades FROM signal_history "
+            "WHERE sig_id=? ORDER BY ts DESC LIMIT 1",
             (sig_id,)
         )
         row = await cur.fetchone()
         if row:
-            keys = ["ts","name","drawdown","monthly_growth","weeks","growth",
-                    "trades","profit_trades","loss_trades"]
+            keys = [
+                "ts","name","drawdown","monthly_growth","start_year","latest_trade",
+                "weeks","growth","trades","profit_trades","loss_trades"
+            ]
             return dict(zip(keys, row))
         return None
 
 async def previous_history(sig_id: str, before_ts: int):
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute(
-            "SELECT ts,name,drawdown,monthly_growth,weeks,growth,trades,"
-            "profit_trades,loss_trades FROM signal_history WHERE sig_id=?"
-            " AND ts<? ORDER BY ts DESC LIMIT 1",
+            "SELECT ts,name,drawdown,monthly_growth,start_year,latest_trade,"
+            "weeks,growth,trades,profit_trades,loss_trades FROM signal_history "
+            "WHERE sig_id=? AND ts<? ORDER BY ts DESC LIMIT 1",
             (sig_id, before_ts)
         )
         row = await cur.fetchone()
         if row:
-            keys = ["ts","name","drawdown","monthly_growth","weeks","growth",
-                    "trades","profit_trades","loss_trades"]
+            keys = [
+                "ts","name","drawdown","monthly_growth","start_year","latest_trade",
+                "weeks","growth","trades","profit_trades","loss_trades"
+            ]
             return dict(zip(keys, row))
         return None
 
@@ -161,7 +197,7 @@ async def history_diff(sig_id: str):
     if prev:
         diff = {}
         for k, v in latest.items():
-            if k in {"ts", "name"}:
+            if k in {"ts", "name", "latest_trade"}:
                 continue
             pv = prev.get(k)
             diff[k] = (v - pv) if (v is not None and pv is not None) else None

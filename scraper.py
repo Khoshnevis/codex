@@ -1,8 +1,15 @@
-import re, time, aiohttp
+import re
+import time
+import aiohttp
 from bs4 import BeautifulSoup
 
+UA = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+)
+
 async def fetch_html(url: str) -> str:
-    async with aiohttp.ClientSession() as s:
+    async with aiohttp.ClientSession(headers={"User-Agent": UA}) as s:
         async with s.get(url) as r:
             r.raise_for_status()
             return await r.text()
@@ -52,6 +59,12 @@ async def scrape(url: str) -> dict:
     drawdown = _num((stats_label("By Equity:") or {}).get_text())
     monthly = _num((stats_label("Monthly growth:") or {}).get_text())
 
+    started_text = (by_label("Started:") or {}).get_text(strip=True)
+    m = re.search(r"(\d{4})", started_text or "")
+    start_year = int(m.group(1)) if m else None
+
+    latest_trade = (by_label("Latest trade:") or {}).get_text(strip=True)
+
     trades = _num((stats_label("Trades:") or {}).get_text())
     profit_trades = _num((stats_label("Profit Trades:") or {}).get_text())
     loss_trades = _num((stats_label("Loss Trades:") or {}).get_text())
@@ -63,6 +76,8 @@ async def scrape(url: str) -> dict:
         "weeks": int(weeks) if weeks is not None else None,
         "drawdown": drawdown,
         "monthly_growth": monthly,
+        "start_year": start_year,
+        "latest_trade": latest_trade,
         "trades": int(trades) if trades is not None else None,
         "profit_trades": int(profit_trades) if profit_trades is not None else None,
         "loss_trades": int(loss_trades) if loss_trades is not None else None,

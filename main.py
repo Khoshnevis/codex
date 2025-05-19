@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import re
+import random
 from contextlib import suppress
 
 import aiohttp
@@ -82,12 +83,14 @@ async def url_ok(url: str) -> bool:
 
 async def scrape_all():
     rows = await db.list_signals()
-    for r in rows:
+    for idx, r in enumerate(rows):
         try:
             data = await scraper.scrape(r["url"])
             await db.add_history(r["id"], **data)
         except Exception as e:
             logger.exception("scrape %s failed: %s", r["id"], e)
+        if idx != len(rows) - 1:
+            await asyncio.sleep(random.uniform(5, 15))
 
 async def periodic_scrape():
     while True:
@@ -141,7 +144,17 @@ async def menu_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             latest = info["latest"]
             diff = info["diff"]
             lines = [f"*{latest['name']}* ({sid})"]
-            for k in ["growth", "drawdown", "monthly_growth", "weeks", "trades", "profit_trades", "loss_trades"]:
+            for k in [
+                "growth",
+                "drawdown",
+                "monthly_growth",
+                "start_year",
+                "latest_trade",
+                "weeks",
+                "trades",
+                "profit_trades",
+                "loss_trades",
+            ]:
                 val = latest.get(k)
                 if val is None:
                     continue
