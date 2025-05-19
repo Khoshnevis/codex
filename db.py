@@ -248,17 +248,3 @@ async def history_diff(sig_id: str):
             diff[k] = (v - pv) if (v is not None and pv is not None) else None
     return {"latest": latest, "previous": prev, "diff": diff}
 
-async def period_report(sig_id: str, start_ts: int, end_ts: int):
-    start = await history_at(sig_id, start_ts)
-    end = await history_at(sig_id, end_ts)
-    if not start or not end:
-        return None
-    diff = {}
-    for k in ["growth", "trades"]:
-        sv = start.get(k)
-        ev = end.get(k)
-        if sv is not None and ev is not None:
-            diff[k] = ev - sv
-    return {"start": start, "end": end, "diff": diff}
-
-
