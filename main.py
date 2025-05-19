@@ -134,7 +134,8 @@ async def periodic_scrape():
 
 # ---------- handlers ----------
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    if not await db.is_admin(update.effective_user.id):
+    uid = update.effective_user.id
+    if not (await db.is_admin(uid) or await db.user_exists(uid)):
         await update.message.reply_text("⛔ Unauthorized")
         return
     await update.message.reply_text("Welcome!", reply_markup=main_kb())
@@ -161,7 +162,9 @@ async def menu_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             raise
     d = q.data
 
-    if not await db.is_admin(q.from_user.id):
+    uid = q.from_user.id
+    is_admin = await db.is_admin(uid)
+    if not (is_admin or await db.user_exists(uid)):
         await q.edit_message_text("⛔ Unauthorized")
         return
 
@@ -256,6 +259,9 @@ async def menu_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text("Menu:", reply_markup=main_kb())
 
     elif d in ("sig_add", "sig_del", "usr_add", "usr_del", "usr_toggle"):
+        if d in ("usr_add", "usr_del", "usr_toggle") and not is_admin:
+            await q.edit_message_text("⛔ Unauthorized")
+            return
         ctx.user_data["await"] = d
         prompt = {
             "sig_add": "Send full signal URL.",
@@ -274,7 +280,9 @@ async def text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     txt = update.message.text.strip()
     me = update.effective_user
 
-    if not await db.is_admin(me.id):
+    uid = me.id
+    is_admin = await db.is_admin(uid)
+    if not (is_admin or await db.user_exists(uid)):
         await update.message.reply_text("⛔ Unauthorized")
         return
     if not act:
@@ -304,6 +312,8 @@ async def text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Removed.", reply_markup=main_kb())
 
     elif act == "usr_add":
+        if not is_admin:
+            return await update.message.reply_text("⛔ Unauthorized")
         m = re_name.match(txt)
         if not m:
             return await update.message.reply_text("Use `<id>|<name>` format.")
@@ -315,6 +325,8 @@ async def text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Added." if ok else "Exists.", reply_markup=main_kb())
 
     elif act == "usr_del":
+        if not is_admin:
+            return await update.message.reply_text("⛔ Unauthorized")
         uid_str = re.sub(r"\D", "", txt)
         if not uid_str:
             return await update.message.reply_text("Need ID.")
@@ -324,6 +336,8 @@ async def text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Removed.", reply_markup=main_kb())
 
     elif act == "usr_toggle":
+        if not is_admin:
+            return await update.message.reply_text("⛔ Unauthorized")
         uid_str = re.sub(r"\D", "", txt)
         if not uid_str:
             return await update.message.reply_text("Need ID.")
