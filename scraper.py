@@ -10,24 +10,36 @@ async def fetch_html(url: str) -> str:
 def _num(text):
     if text is None:
         return None
-    t = re.sub(r"[^0-9.+-]", "", text)
+    s = text.strip()
+    neg = False
+    if s.startswith("(") and s.endswith(")"):
+        neg = True
+        s = s[1:-1]
+    # remove common separators/whitespace
+    s = s.replace(",", "").replace(" ", "")
+    m = re.search(r"[-+]?\d*\.?\d+", s)
+    if not m:
+        return None
     try:
-        return float(t)
+        num = float(m.group(0))
     except ValueError:
         return None
+    return -num if neg else num
 
 async def scrape(url: str) -> dict:
     html = await fetch_html(url)
     soup = BeautifulSoup(html, "lxml")
 
     def by_label(label_text):
-        label = soup.find("div", class_="s-list-info__label", string=label_text)
+        pat = re.compile(re.escape(label_text.strip()), re.I)
+        label = soup.find("div", class_="s-list-info__label", string=pat)
         if label and label.parent:
             return label.parent.find("div", class_="s-list-info__value")
         return None
 
     def stats_label(text):
-        lab = soup.find("div", class_="s-data-columns__label", string=text)
+        pat = re.compile(re.escape(text.strip()), re.I)
+        lab = soup.find("div", class_="s-data-columns__label", string=pat)
         if lab and lab.parent:
             return lab.parent.find("div", class_="s-data-columns__value")
         return None
