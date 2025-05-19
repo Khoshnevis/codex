@@ -8,7 +8,11 @@ _SCHEMA = """
 PRAGMA journal_mode=WAL;
 CREATE TABLE IF NOT EXISTS signals (
     id   TEXT PRIMARY KEY,
-    url  TEXT NOT NULL
+    url  TEXT NOT NULL,
+    name TEXT,
+    weeks INTEGER,
+    latest_trade INTEGER,
+    start_year INTEGER
 );
 CREATE TABLE IF NOT EXISTS users (
     id          INTEGER PRIMARY KEY,
@@ -27,6 +31,8 @@ CREATE TABLE IF NOT EXISTS signal_history (
     trades         INTEGER,
     profit_trades  INTEGER,
     loss_trades    INTEGER,
+    start_year     INTEGER,
+    latest_trade   INTEGER,
     PRIMARY KEY(sig_id, ts)
 );
 """
@@ -34,6 +40,19 @@ CREATE TABLE IF NOT EXISTS signal_history (
 async def init():
     async with aiosqlite.connect(DB_PATH) as db:
         await db.executescript(_SCHEMA)
+        # migrations for additional columns
+        for stmt in [
+            "ALTER TABLE signals ADD COLUMN name TEXT",
+            "ALTER TABLE signals ADD COLUMN weeks INTEGER",
+            "ALTER TABLE signals ADD COLUMN latest_trade INTEGER",
+            "ALTER TABLE signals ADD COLUMN start_year INTEGER",
+            "ALTER TABLE signal_history ADD COLUMN start_year INTEGER",
+            "ALTER TABLE signal_history ADD COLUMN latest_trade INTEGER",
+        ]:
+            try:
+                await db.execute(stmt)
+            except aiosqlite.Error:
+                pass
         await db.commit()
 
 # -------- users --------
@@ -80,22 +99,34 @@ async def list_users():
             for r in rows
         ]
 
+async def list_user_ids():
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute("SELECT id FROM users")
+        rows = await cur.fetchall()
+        return [r[0] for r in rows]
+
 # -------- signals --------
 async def list_signals():
     async with aiosqlite.connect(DB_PATH) as db:
-        cur = await db.execute("SELECT id, url FROM signals ORDER BY id")
+        cur = await db.execute("SELECT id, url, name, weeks, latest_trade, start_year FROM signals ORDER BY id")
         rows = await cur.fetchall()
-        return [{"id": r[0], "url": r[1]} for r in rows]
+        return [
+            {"id": r[0], "url": r[1], "name": r[2], "weeks": r[3], "latest_trade": r[4], "start_year": r[5]}
+            for r in rows
+        ]
 
 async def signal_exists(sig_id: str) -> bool:
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute("SELECT 1 FROM signals WHERE id = ?", (sig_id,))
         return await cur.fetchone() is not None
 
-async def add_signal(sig_id: str, url: str) -> bool:
+async def add_signal(sig_id: str, url: str, name=None, weeks=None, latest_trade=None, start_year=None) -> bool:
     try:
         async with aiosqlite.connect(DB_PATH) as db:
-            await db.execute("INSERT INTO signals VALUES (?, ?)", (sig_id, url))
+            await db.execute(
+                "INSERT INTO signals (id,url,name,weeks,latest_trade,start_year) VALUES (?,?,?,?,?,?)",
+                (sig_id, url, name, weeks, latest_trade, start_year),
+            )
             await db.commit()
         return True
     except aiosqlite.IntegrityError:
@@ -107,13 +138,32 @@ async def remove_signal(sig_id: str) -> int:
         await db.commit()
         return cur.rowcount
 
+async def update_signal_info(sig_id: str, **kwargs):
+    cols = []
+    values = []
+    for k in ["name", "weeks", "latest_trade", "start_year"]:
+        if k in kwargs and kwargs[k] is not None:
+            cols.append(f"{k} = ?")
+            values.append(kwargs[k])
+    if not cols:
+        return
+    values.append(sig_id)
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            f"UPDATE signals SET {', '.join(cols)} WHERE id = ?",
+            values,
+        )
+        await db.commit()
+
 # -------- signal history --------
 async def add_history(sig_id: str, **data):
     cols = ["sig_id", "ts", "name", "drawdown", "monthly_growth",
-            "weeks", "growth", "trades", "profit_trades", "loss_trades"]
+            "weeks", "growth", "trades", "profit_trades", "loss_trades",
+            "start_year", "latest_trade"]
     values = [sig_id, data.get("ts"), data.get("name"), data.get("drawdown"),
               data.get("monthly_growth"), data.get("weeks"), data.get("growth"),
-              data.get("trades"), data.get("profit_trades"), data.get("loss_trades")]
+              data.get("trades"), data.get("profit_trades"), data.get("loss_trades"),
+              data.get("start_year"), data.get("latest_trade")]
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             f"INSERT OR IGNORE INTO signal_history ({', '.join(cols)})"
@@ -126,14 +176,14 @@ async def latest_history(sig_id: str):
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute(
             "SELECT ts,name,drawdown,monthly_growth,weeks,growth,trades,"
-            "profit_trades,loss_trades FROM signal_history WHERE sig_id=?"
+            "profit_trades,loss_trades,start_year,latest_trade FROM signal_history WHERE sig_id=?"
             " ORDER BY ts DESC LIMIT 1",
             (sig_id,)
         )
         row = await cur.fetchone()
         if row:
             keys = ["ts","name","drawdown","monthly_growth","weeks","growth",
-                    "trades","profit_trades","loss_trades"]
+                    "trades","profit_trades","loss_trades","start_year","latest_trade"]
             return dict(zip(keys, row))
         return None
 
@@ -141,14 +191,14 @@ async def previous_history(sig_id: str, before_ts: int):
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute(
             "SELECT ts,name,drawdown,monthly_growth,weeks,growth,trades,"
-            "profit_trades,loss_trades FROM signal_history WHERE sig_id=?"
+            "profit_trades,loss_trades,start_year,latest_trade FROM signal_history WHERE sig_id=?"
             " AND ts<? ORDER BY ts DESC LIMIT 1",
             (sig_id, before_ts)
         )
         row = await cur.fetchone()
         if row:
             keys = ["ts","name","drawdown","monthly_growth","weeks","growth",
-                    "trades","profit_trades","loss_trades"]
+                    "trades","profit_trades","loss_trades","start_year","latest_trade"]
             return dict(zip(keys, row))
         return None
 
