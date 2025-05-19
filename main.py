@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import random
+from datetime import datetime
 from contextlib import suppress
 
 import aiohttp
@@ -55,10 +56,19 @@ def sig_kb():
         [InlineKeyboardButton("⬅ Back", callback_data="back")],
     ])
 
-def stats_kb(rows):
-    kb = [
-        [InlineKeyboardButton(f"{r['name']} ({r['id']})" if r.get('name') else r['id'], callback_data=f"stat_{r['id']}")] for r in rows
-    ]
+async def stats_kb(rows):
+    kb = []
+    for r in rows:
+        latest = await db.latest_history(r['id'])
+        growth = latest.get('growth') if latest else None
+        year = r.get('start_year') or (latest.get('start_year') if latest else None)
+        label = " - ".join([
+            str(r['id']),
+            r.get('name') or '?',
+            str(year) if year is not None else '?',
+            str(growth) if growth is not None else '?'
+        ])
+        kb.append([InlineKeyboardButton(label, callback_data=f"stat_{r['id']}")])
     kb.append([InlineKeyboardButton("⬅ Back", callback_data="manage_sig")])
     return InlineKeyboardMarkup(kb)
 
@@ -155,9 +165,18 @@ async def menu_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not rows:
             await q.edit_message_text("ℹ None", reply_markup=sig_kb())
         else:
+            info_lines = []
+            for r in rows:
+                hist = await db.latest_history(r["id"])
+                growth = hist.get("growth") if hist else None
+                start = r.get("start_year") or (hist.get("start_year") if hist else None)
+                gtxt = f"{growth}%" if growth is not None else "?"
+                stxt = str(start) if start is not None else "?"
+                info_lines.append(f"{r['id']} - {md(r.get('name') or '')} - {stxt} - {gtxt}")
+            text = "📜 *Signals*:\n" + "\n".join(info_lines)
             await q.edit_message_text(
                 "Select signal:",
-                reply_markup=stats_kb(rows),
+                reply_markup=await stats_kb(rows),
             )
 
     elif d.startswith("stat_"):
@@ -299,6 +318,35 @@ async def text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             reply_markup=main_kb(),
         )
 
+async def report_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not await db.is_admin(update.effective_user.id):
+        await update.message.reply_text("⛔ Unauthorized")
+        return
+    if len(ctx.args) < 3:
+        return await update.message.reply_text("Use /report <ids> <from> <to>")
+    ids = ctx.args[0].split(",")
+    try:
+        start_ts = int(datetime.strptime(ctx.args[1], "%Y-%m-%d").timestamp())
+        end_ts = int(datetime.strptime(ctx.args[2], "%Y-%m-%d").timestamp())
+    except ValueError:
+        return await update.message.reply_text("Bad date format.")
+    lines = []
+    for sid in ids:
+        rep = await db.period_report(sid, start_ts, end_ts)
+        if not rep:
+            lines.append(f"{sid}: n/a")
+            continue
+        diff = rep["diff"]
+        growth = diff.get("growth")
+        trades = diff.get("trades")
+        parts = []
+        if growth is not None:
+            parts.append(f"growth {growth:+}")
+        if trades is not None:
+            parts.append(f"trades {trades:+}")
+        lines.append(f"{sid}: " + ", ".join(parts))
+    await update.message.reply_text("\n".join(lines))
+
 # ---------- bootstrap ----------
 if __name__ == "__main__":
     if not BOT_TOKEN:
@@ -312,6 +360,7 @@ if __name__ == "__main__":
     app = Application.builder().token(BOT_TOKEN).build()
     APP = app
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("report", report_cmd))
     app.add_handler(CallbackQueryHandler(menu_cb))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text))
 
