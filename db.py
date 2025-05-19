@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS signal_history (
     name           TEXT,
     drawdown       REAL,
     monthly_growth REAL,
+    start_year     INTEGER,
+    latest_trade   TEXT,
     weeks          INTEGER,
     growth         REAL,
     trades         INTEGER,
@@ -40,19 +42,6 @@ CREATE TABLE IF NOT EXISTS signal_history (
 async def init():
     async with aiosqlite.connect(DB_PATH) as db:
         await db.executescript(_SCHEMA)
-        # migrations for additional columns
-        for stmt in [
-            "ALTER TABLE signals ADD COLUMN name TEXT",
-            "ALTER TABLE signals ADD COLUMN weeks INTEGER",
-            "ALTER TABLE signals ADD COLUMN latest_trade INTEGER",
-            "ALTER TABLE signals ADD COLUMN start_year INTEGER",
-            "ALTER TABLE signal_history ADD COLUMN start_year INTEGER",
-            "ALTER TABLE signal_history ADD COLUMN latest_trade INTEGER",
-        ]:
-            try:
-                await db.execute(stmt)
-            except aiosqlite.Error:
-                pass
         await db.commit()
 
 # -------- users --------
@@ -211,7 +200,7 @@ async def history_diff(sig_id: str):
     if prev:
         diff = {}
         for k, v in latest.items():
-            if k in {"ts", "name"}:
+            if k in {"ts", "name", "latest_trade"}:
                 continue
             pv = prev.get(k)
             diff[k] = (v - pv) if (v is not None and pv is not None) else None
