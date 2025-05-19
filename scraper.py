@@ -85,10 +85,8 @@ async def scrape(url: str) -> dict:
                 "month": 60*24*30,
             }[unit]
             latest_trade = int(num * mult)
-    drawdown = _num((stats_label("By Equity:") or {}).get_text())
+    drawdown = _num((stats_label("By Balance:") or {}).get_text())
     monthly = _num((stats_label("Monthly growth:") or {}).get_text())
-
-
     trades = _num((stats_label("Trades:") or {}).get_text())
     profit_trades = _num((stats_label("Profit Trades:") or {}).get_text())
     loss_trades = _num((stats_label("Loss Trades:") or {}).get_text())
