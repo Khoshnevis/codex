@@ -377,6 +377,20 @@ async def report_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         lines.append(f"{sid}: " + ", ".join(parts))
     await update.message.reply_text("\n".join(lines))
 
+async def setcookie_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not await db.is_admin(uid):
+        await update.message.reply_text("⛔ Unauthorized")
+        return
+    text = update.message.text or ""
+    parts = text.split(None, 1)
+    if len(parts) < 2:
+        await update.message.reply_text("Usage: /setcookie <cookie>")
+        return
+    cookie = parts[1].strip()
+    await db.set_auth_cookie(cookie)
+    await update.message.reply_text("Cookie saved.")
+
 # ---------- bootstrap ----------
 if __name__ == "__main__":
     if not BOT_TOKEN:
@@ -392,6 +406,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("me", me_cmd))
     app.add_handler(CommandHandler("report", report_cmd))
+    app.add_handler(CommandHandler("setcookie", setcookie_cmd))
     app.add_handler(CallbackQueryHandler(menu_cb))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text))
 
