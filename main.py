@@ -60,16 +60,24 @@ def sig_kb():
 async def stats_kb(rows):
     kb = []
     for r in rows:
-        latest = await db.latest_history(r['id'])
-        growth = latest.get('growth') if latest else None
-        year = r.get('start_year') or (latest.get('start_year') if latest else None)
-        label = " - ".join([
-            str(r['id']),
-            r.get('name') or '?',
-            str(year) if year is not None else '?',
-            str(growth) if growth is not None else '?'
+        latest = await db.latest_history(r["id"])
+        growth = latest.get("growth") if latest else None
+        drawdown = latest.get("drawdown") if latest else None
+        year = r.get("start_year") or (
+            latest.get("start_year") if latest else None
+        )
+        label = " - ".join(
+            [
+                str(r["id"]),
+                r.get("name") or "?",
+                str(year) if year is not None else "?",
+                f"{growth}%" if growth is not None else "?",
+                f"{drawdown}%" if drawdown is not None else "?",
+            ]
+        )
+        kb.append([
+            InlineKeyboardButton(label, callback_data=f"stat_{r['id']}")
         ])
-        kb.append([InlineKeyboardButton(label, callback_data=f"stat_{r['id']}")])
     kb.append([InlineKeyboardButton("⬅ Back", callback_data="manage_sig")])
     return InlineKeyboardMarkup(kb)
 
@@ -346,6 +354,20 @@ async def text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             reply_markup=main_kb(),
         )
 
+
+async def setcookie_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not await db.is_admin(uid):
+        await update.message.reply_text("⛔ Unauthorized")
+        return
+    text = update.message.text or ""
+    parts = text.split(None, 1)
+    if len(parts) < 2:
+        await update.message.reply_text("Usage: /setcookie <cookie>")
+        return
+    cookie = parts[1].strip()
+    await db.set_auth_cookie(cookie)
+    await update.message.reply_text("Cookie saved.")
 
 async def setcookie_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
