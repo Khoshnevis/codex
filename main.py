@@ -361,6 +361,20 @@ async def setcookie_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await db.set_auth_cookie(cookie)
     await update.message.reply_text("Cookie saved.")
 
+async def setcookie_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not await db.is_admin(uid):
+        await update.message.reply_text("⛔ Unauthorized")
+        return
+    text = update.message.text or ""
+    parts = text.split(None, 1)
+    if len(parts) < 2:
+        await update.message.reply_text("Usage: /setcookie <cookie>")
+        return
+    cookie = parts[1].strip()
+    await db.set_auth_cookie(cookie)
+    await update.message.reply_text("Cookie saved.")
+
 # ---------- bootstrap ----------
 if __name__ == "__main__":
     if not BOT_TOKEN:
