@@ -4,13 +4,19 @@ import time
 import aiohttp
 from bs4 import BeautifulSoup
 
+import db
+
 UA = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
 )
 
 async def fetch_html(url: str) -> str:
-    async with aiohttp.ClientSession(headers={"User-Agent": UA}) as s:
+    headers = {"User-Agent": UA}
+    cookie = await db.get_auth_cookie()
+    if cookie:
+        headers["Cookie"] = cookie
+    async with aiohttp.ClientSession(headers=headers) as s:
         async with s.get(url) as r:
             r.raise_for_status()
             return await r.text()
@@ -79,7 +85,7 @@ async def scrape(url: str) -> dict:
                 "month": 60*24*30,
             }[unit]
             latest_trade = int(num * mult)
-    drawdown = _num((stats_label("By Equity:") or {}).get_text())
+    drawdown = _num((stats_label("By Balance:") or {}).get_text())
     monthly = _num((stats_label("Monthly growth:") or {}).get_text())
 
 

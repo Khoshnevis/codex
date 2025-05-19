@@ -36,12 +36,32 @@ CREATE TABLE IF NOT EXISTS signal_history (
     loss_trades    INTEGER,
     PRIMARY KEY(sig_id, ts)
 );
+CREATE TABLE IF NOT EXISTS config (
+    key   TEXT PRIMARY KEY,
+    value TEXT
+);
 """
 
 async def init():
     async with aiosqlite.connect(DB_PATH) as db:
         await db.executescript(_SCHEMA)
         await db.commit()
+
+async def set_auth_cookie(cookie: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO config (key, value) VALUES ('auth_cookie', ?)",
+            (cookie,),
+        )
+        await db.commit()
+
+async def get_auth_cookie() -> str | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            "SELECT value FROM config WHERE key = 'auth_cookie'"
+        )
+        row = await cur.fetchone()
+        return row[0] if row else None
 
 # -------- users --------
 async def add_user(uid: int, name=None, desc=None, admin=False) -> bool:
