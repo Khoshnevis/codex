@@ -4,7 +4,6 @@ import os
 import random
 import re
 from contextlib import suppress
-from datetime import datetime
 
 import aiohttp
 import telegram.error
@@ -355,35 +354,34 @@ async def text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             reply_markup=main_kb(),
         )
 
-async def report_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+
+async def setcookie_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    if not (await db.is_admin(uid) or await db.user_exists(uid)):
+    if not await db.is_admin(uid):
         await update.message.reply_text("⛔ Unauthorized")
         return
-    if len(ctx.args) < 3:
-        return await update.message.reply_text("Use /report <ids> <from> <to>")
-    ids = ctx.args[0].split(",")
-    try:
-        start_ts = int(datetime.strptime(ctx.args[1], "%Y-%m-%d").timestamp())
-        end_ts = int(datetime.strptime(ctx.args[2], "%Y-%m-%d").timestamp())
-    except ValueError:
-        return await update.message.reply_text("Bad date format.")
-    lines = []
-    for sid in ids:
-        rep = await db.period_report(sid, start_ts, end_ts)
-        if not rep:
-            lines.append(f"{sid}: n/a")
-            continue
-        diff = rep["diff"]
-        growth = diff.get("growth")
-        trades = diff.get("trades")
-        parts = []
-        if growth is not None:
-            parts.append(f"growth {growth:+}")
-        if trades is not None:
-            parts.append(f"trades {trades:+}")
-        lines.append(f"{sid}: " + ", ".join(parts))
-    await update.message.reply_text("\n".join(lines))
+    text = update.message.text or ""
+    parts = text.split(None, 1)
+    if len(parts) < 2:
+        await update.message.reply_text("Usage: /setcookie <cookie>")
+        return
+    cookie = parts[1].strip()
+    await db.set_auth_cookie(cookie)
+    await update.message.reply_text("Cookie saved.")
+
+async def setcookie_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not await db.is_admin(uid):
+        await update.message.reply_text("⛔ Unauthorized")
+        return
+    text = update.message.text or ""
+    parts = text.split(None, 1)
+    if len(parts) < 2:
+        await update.message.reply_text("Usage: /setcookie <cookie>")
+        return
+    cookie = parts[1].strip()
+    await db.set_auth_cookie(cookie)
+    await update.message.reply_text("Cookie saved.")
 
 async def setcookie_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
@@ -413,7 +411,6 @@ if __name__ == "__main__":
     APP = app
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("me", me_cmd))
-    app.add_handler(CommandHandler("report", report_cmd))
     app.add_handler(CommandHandler("setcookie", setcookie_cmd))
     app.add_handler(CallbackQueryHandler(menu_cb))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text))
