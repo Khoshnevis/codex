@@ -1,5 +1,6 @@
-import aiosqlite
 import pathlib
+
+import aiosqlite
 
 DB_PATH = pathlib.Path("data/database.db")
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)

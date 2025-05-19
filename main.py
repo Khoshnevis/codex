@@ -1,20 +1,18 @@
 import asyncio
 import logging
 import os
-import re
 import random
-from datetime import datetime
+import re
 from contextlib import suppress
+from datetime import datetime
 
 import aiohttp
 import telegram.error
 from dotenv import load_dotenv
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import (Application, CallbackQueryHandler, CommandHandler,
+                          ContextTypes, MessageHandler, filters)
 from telegram.helpers import escape_markdown
-from telegram.ext import (
-    Application, CallbackQueryHandler, CommandHandler,
-    ContextTypes, MessageHandler, filters,
-)
 
 import db
 import scraper
