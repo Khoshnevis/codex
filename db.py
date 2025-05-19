@@ -36,12 +36,32 @@ CREATE TABLE IF NOT EXISTS signal_history (
     loss_trades    INTEGER,
     PRIMARY KEY(sig_id, ts)
 );
+CREATE TABLE IF NOT EXISTS config (
+    key   TEXT PRIMARY KEY,
+    value TEXT
+);
 """
 
 async def init():
     async with aiosqlite.connect(DB_PATH) as db:
         await db.executescript(_SCHEMA)
         await db.commit()
+
+async def set_auth_cookie(cookie: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO config (key, value) VALUES ('auth_cookie', ?)",
+            (cookie,),
+        )
+        await db.commit()
+
+async def get_auth_cookie() -> str | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            "SELECT value FROM config WHERE key = 'auth_cookie'"
+        )
+        row = await cur.fetchone()
+        return row[0] if row else None
 
 # -------- users --------
 async def add_user(uid: int, name=None, desc=None, admin=False) -> bool:
@@ -227,18 +247,4 @@ async def history_diff(sig_id: str):
             pv = prev.get(k)
             diff[k] = (v - pv) if (v is not None and pv is not None) else None
     return {"latest": latest, "previous": prev, "diff": diff}
-
-async def period_report(sig_id: str, start_ts: int, end_ts: int):
-    start = await history_at(sig_id, start_ts)
-    end = await history_at(sig_id, end_ts)
-    if not start or not end:
-        return None
-    diff = {}
-    for k in ["growth", "trades"]:
-        sv = start.get(k)
-        ev = end.get(k)
-        if sv is not None and ev is not None:
-            diff[k] = ev - sv
-    return {"start": start, "end": end, "diff": diff}
-
 
