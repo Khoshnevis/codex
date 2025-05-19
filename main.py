@@ -36,9 +36,8 @@ re_sig = re.compile(r"signals?/(\d+)", re.I)
 re_url = re.compile(r"https?://\S+", re.I)
 re_name = re.compile(r"^([^|]+)\|(.+)$", re.S)
 
-# Escape special characters for Telegram MarkdownV2
 def md(text: str) -> str:
-    return escape_markdown(str(text), version=2)
+    return escape_markdown(str(text), version=1)
 
 # ---------- keyboards ----------
 def main_kb():
@@ -135,6 +134,19 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     await update.message.reply_text("Welcome!", reply_markup=main_kb())
 
+async def me_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    u = update.effective_user
+    lines = [
+        f"*id:* {u.id}",
+        f"*first name:* {md(u.first_name)}" if u.first_name else None,
+        f"*last name:* {md(u.last_name)}" if u.last_name else None,
+        f"*username:* @{md(u.username)}" if u.username else None,
+        f"*language:* {md(u.language_code)}" if u.language_code else None,
+        f"*is_bot:* {u.is_bot}",
+    ]
+    text = "\n".join(filter(None, lines)) or "No data"
+    await update.message.reply_text(text, parse_mode="Markdown")
+
 async def menu_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     try:
@@ -158,7 +170,7 @@ async def menu_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             text = "📜 *Signals*:\n" + "\n".join(lines)
         else:
             text = "ℹ None"
-        await q.edit_message_text(text, parse_mode="MarkdownV2", reply_markup=sig_kb())
+        await q.edit_message_text(text, parse_mode="Markdown", reply_markup=sig_kb())
 
     elif d == "sig_stats":
         rows = await db.list_signals()
@@ -187,7 +199,7 @@ async def menu_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         else:
             latest = info["latest"]
             diff = info["diff"]
-            lines = [f"*{md(latest['name'])}* \({sid}\)"]
+            lines = [f"*{md(latest['name'])}* ({sid})"]
             for k in [
                 "growth",
                 "drawdown",
@@ -360,7 +372,7 @@ if __name__ == "__main__":
     app = Application.builder().token(BOT_TOKEN).build()
     APP = app
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("report", report_cmd))
+    app.add_handler(CommandHandler("me", me_cmd))
     app.add_handler(CallbackQueryHandler(menu_cb))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text))
 
