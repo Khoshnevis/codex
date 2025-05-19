@@ -39,6 +39,11 @@ re_name = re.compile(r"^([^|]+)\|(.+)$", re.S)
 def md(text: str) -> str:
     return escape_markdown(str(text), version=1)
 
+
+def md2(text: str) -> str:
+    """Escape text for MarkdownV2."""
+    return escape_markdown(str(text), version=2)
+
 # ---------- keyboards ----------
 def main_kb():
     return InlineKeyboardMarkup([
@@ -199,7 +204,7 @@ async def menu_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         else:
             latest = info["latest"]
             diff = info["diff"]
-            lines = [f"*{md(latest['name'])}* ({sid})"]
+            lines = [f"*{md2(latest['name'])}* ({sid})"]
             for k in [
                 "growth",
                 "drawdown",
@@ -230,7 +235,7 @@ async def menu_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                         sign = ""
                         arrow = ""
                     text += f" ({arrow}{sign}{dv})"
-                lines.append(md(text))
+                lines.append(md2(text))
             await q.edit_message_text(
                 "\n".join(lines), parse_mode="MarkdownV2", reply_markup=sig_kb()
             )
@@ -241,7 +246,7 @@ async def menu_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     elif d == "usr_list":
         rows = await db.list_users()
         if rows:
-            lines = [f"{'⭐' if r['admin'] else '▫'} {r['id']} {md(r['name'] or '')}" for r in rows]
+            lines = [f"{'⭐' if r['admin'] else '▫'} {r['id']} {md2(r['name'] or '')}" for r in rows]
             text = "📜 *Users*:\n" + "\n".join(lines)
         else:
             text = "ℹ None"
