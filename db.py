@@ -27,14 +27,12 @@ CREATE TABLE IF NOT EXISTS signal_history (
     drawdown       REAL,
     monthly_growth REAL,
     start_year     INTEGER,
-    latest_trade   TEXT,
+    latest_trade   INTEGER,
     weeks          INTEGER,
     growth         REAL,
     trades         INTEGER,
     profit_trades  INTEGER,
     loss_trades    INTEGER,
-    start_year     INTEGER,
-    latest_trade   INTEGER,
     PRIMARY KEY(sig_id, ts)
 );
 """
@@ -176,6 +174,22 @@ async def latest_history(sig_id: str):
             return dict(zip(keys, row))
         return None
 
+async def history_at(sig_id: str, ts: int):
+    """Return the latest history record not newer than ts."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            "SELECT ts,name,drawdown,monthly_growth,weeks,growth,trades,"
+            "profit_trades,loss_trades,start_year,latest_trade FROM signal_history "
+            "WHERE sig_id=? AND ts<=? ORDER BY ts DESC LIMIT 1",
+            (sig_id, ts),
+        )
+        row = await cur.fetchone()
+        if row:
+            keys = ["ts","name","drawdown","monthly_growth","weeks","growth",
+                    "trades","profit_trades","loss_trades","start_year","latest_trade"]
+            return dict(zip(keys, row))
+        return None
+
 async def previous_history(sig_id: str, before_ts: int):
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute(
@@ -205,5 +219,18 @@ async def history_diff(sig_id: str):
             pv = prev.get(k)
             diff[k] = (v - pv) if (v is not None and pv is not None) else None
     return {"latest": latest, "previous": prev, "diff": diff}
+
+async def period_report(sig_id: str, start_ts: int, end_ts: int):
+    start = await history_at(sig_id, start_ts)
+    end = await history_at(sig_id, end_ts)
+    if not start or not end:
+        return None
+    diff = {}
+    for k in ["growth", "trades"]:
+        sv = start.get(k)
+        ev = end.get(k)
+        if sv is not None and ev is not None:
+            diff[k] = ev - sv
+    return {"start": start, "end": end, "diff": diff}
 
 
