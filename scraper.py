@@ -1,8 +1,15 @@
-import re, time, aiohttp
+import re
+import time
+import aiohttp
 from bs4 import BeautifulSoup
 
+UA = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+)
+
 async def fetch_html(url: str) -> str:
-    async with aiohttp.ClientSession() as s:
+    async with aiohttp.ClientSession(headers={"User-Agent": UA}) as s:
         async with s.get(url) as r:
             r.raise_for_status()
             return await r.text()
