@@ -68,6 +68,13 @@ async def is_admin(uid: int) -> bool:
         )
         return await cur.fetchone() is not None
 
+async def user_exists(uid: int) -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            "SELECT 1 FROM users WHERE id = ?", (uid,)
+        )
+        return await cur.fetchone() is not None
+
 async def set_admin(uid: int, value: bool):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
