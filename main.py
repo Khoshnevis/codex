@@ -9,6 +9,7 @@ import aiohttp
 import telegram.error
 from dotenv import load_dotenv
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.helpers import escape_markdown
 from telegram.ext import (
     Application, CallbackQueryHandler, CommandHandler,
     ContextTypes, MessageHandler, filters,
@@ -34,6 +35,10 @@ re_sig = re.compile(r"signals?/(\d+)", re.I)
 re_url = re.compile(r"https?://\S+", re.I)
 re_name = re.compile(r"^([^|]+)\|(.+)$", re.S)
 
+# Escape special characters for Telegram MarkdownV2
+def md(text: str) -> str:
+    return escape_markdown(str(text), version=2)
+
 # ---------- keyboards ----------
 def main_kb():
     return InlineKeyboardMarkup([
@@ -50,10 +55,19 @@ def sig_kb():
         [InlineKeyboardButton("⬅ Back", callback_data="back")],
     ])
 
-def stats_kb(rows):
-    kb = [
-        [InlineKeyboardButton(f"{r['name']} ({r['id']})" if r.get('name') else r['id'], callback_data=f"stat_{r['id']}")] for r in rows
-    ]
+async def stats_kb(rows):
+    kb = []
+    for r in rows:
+        latest = await db.latest_history(r['id'])
+        growth = latest.get('growth') if latest else None
+        year = r.get('start_year') or (latest.get('start_year') if latest else None)
+        label = " - ".join([
+            str(r['id']),
+            r.get('name') or '?',
+            str(year) if year is not None else '?',
+            str(growth) if growth is not None else '?'
+        ])
+        kb.append([InlineKeyboardButton(label, callback_data=f"stat_{r['id']}")])
     kb.append([InlineKeyboardButton("⬅ Back", callback_data="manage_sig")])
     return InlineKeyboardMarkup(kb)
 
@@ -138,8 +152,12 @@ async def menu_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     elif d == "sig_list":
         rows = await db.list_signals()
-        text = "📜 *Signals*:\n" + "\n".join(f"{r['id']} → {r['url']}" for r in rows) if rows else "ℹ None"
-        await q.edit_message_text(text, parse_mode="Markdown", reply_markup=sig_kb())
+        if rows:
+            lines = [f"{r['id']} → {md(r['url'])}" for r in rows]
+            text = "📜 *Signals*:\n" + "\n".join(lines)
+        else:
+            text = "ℹ None"
+        await q.edit_message_text(text, parse_mode="MarkdownV2", reply_markup=sig_kb())
 
     elif d == "sig_stats":
         rows = await db.list_signals()
@@ -148,7 +166,7 @@ async def menu_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         else:
             await q.edit_message_text(
                 "Select signal:",
-                reply_markup=stats_kb(rows),
+                reply_markup=await stats_kb(rows),
             )
 
     elif d.startswith("stat_"):
@@ -159,7 +177,7 @@ async def menu_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         else:
             latest = info["latest"]
             diff = info["diff"]
-            lines = [f"*{latest['name']}* ({sid})"]
+            lines = [f"*{md(latest['name'])}* ({sid})"]
             for k in [
                 "growth",
                 "drawdown",
@@ -190,9 +208,9 @@ async def menu_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                         sign = ""
                         arrow = ""
                     text += f" ({arrow}{sign}{dv})"
-                lines.append(text)
+                lines.append(md(text))
             await q.edit_message_text(
-                "\n".join(lines), parse_mode="Markdown", reply_markup=sig_kb()
+                "\n".join(lines), parse_mode="MarkdownV2", reply_markup=sig_kb()
             )
 
     elif d == "manage_usr":
@@ -201,11 +219,11 @@ async def menu_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     elif d == "usr_list":
         rows = await db.list_users()
         if rows:
-            lines = [f"{'⭐' if r['admin'] else '▫'} {r['id']} {r['name'] or ''}" for r in rows]
+            lines = [f"{'⭐' if r['admin'] else '▫'} {r['id']} {md(r['name'] or '')}" for r in rows]
             text = "📜 *Users*:\n" + "\n".join(lines)
         else:
             text = "ℹ None"
-        await q.edit_message_text(text, parse_mode="Markdown", reply_markup=usr_kb())
+        await q.edit_message_text(text, parse_mode="MarkdownV2", reply_markup=usr_kb())
 
     elif d == "back":
         await q.edit_message_text("Menu:", reply_markup=main_kb())
