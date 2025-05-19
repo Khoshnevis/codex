@@ -207,7 +207,7 @@ async def menu_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         else:
             latest = info["latest"]
             diff = info["diff"]
-            lines = [f"*{md2(latest['name'])}* ({sid})"]
+            lines = [f"*{md2(latest['name'])}* \\({sid}\\)"]
             for k in [
                 "growth",
                 "drawdown",
