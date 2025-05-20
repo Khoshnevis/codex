@@ -406,13 +406,18 @@ async def syncsubs_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     await update.message.reply_text("Fetching subscriptions…")
     async with scraper.session() as sess:
+        if not await scraper.test_cookie(session=sess):
+            await update.message.reply_text("❌ Cookie invalid")
+            return
         subs = await scraper.list_subscriptions(session=sess)
     added = 0
     for s in subs:
         if not await db.signal_exists(s["id"]):
             await db.add_signal(s["id"], s["url"], name=s.get("name"), auto=True)
             added += 1
-    await update.message.reply_text(f"Added {added} new signal(s).")
+    await update.message.reply_text(
+        f"Found {len(subs)} subscription(s). Added {added} new signal(s)."
+    )
 
 
 async def showcookie_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
