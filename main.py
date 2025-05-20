@@ -108,29 +108,39 @@ async def url_ok(url: str) -> bool:
 
 async def scrape_all():
     rows = await db.list_signals()
-    for idx, r in enumerate(rows):
-        try:
-            data = await scraper.scrape(r["url"])
-            await db.add_history(r["id"], **data)
-            await db.update_signal_info(r["id"], name=data.get("name"), weeks=data.get("weeks"), latest_trade=data.get("latest_trade"), start_year=data.get("start_year"))
-            info = await db.history_diff(r["id"])
-            if info and info.get("diff"):
-                changes = []
-                for k, dv in info["diff"].items():
-                    if dv:
-                        changes.append(f"{k}: {dv:+}")
-                if changes:
-                    text = f"\u2139 Updates for {info['latest']['name']} ({r['id']}):\n" + "\n".join(changes)
-                    uids = await db.list_user_ids()
-                    for uid in uids:
-                        try:
-                            await APP.bot.send_message(uid, text)
-                        except Exception:
-                            pass
-        except Exception as e:
-            logger.exception("scrape %s failed: %s", r["id"], e)
-        if idx != len(rows) - 1:
-            await asyncio.sleep(random.uniform(5, 15))
+    async with scraper.session() as sess:
+        for idx, r in enumerate(rows):
+            try:
+                data = await scraper.scrape(r["url"], session=sess)
+                await db.add_history(r["id"], **data)
+                await db.update_signal_info(
+                    r["id"],
+                    name=data.get("name"),
+                    weeks=data.get("weeks"),
+                    latest_trade=data.get("latest_trade"),
+                    start_year=data.get("start_year"),
+                )
+                info = await db.history_diff(r["id"])
+                if info and info.get("diff"):
+                    changes = []
+                    for k, dv in info["diff"].items():
+                        if dv:
+                            changes.append(f"{k}: {dv:+}")
+                    if changes:
+                        text = (
+                            f"\u2139 Updates for {info['latest']['name']} ({r['id']}):\n"
+                            + "\n".join(changes)
+                        )
+                        uids = await db.list_user_ids()
+                        for uid in uids:
+                            try:
+                                await APP.bot.send_message(uid, text)
+                            except Exception:
+                                pass
+            except Exception as e:
+                logger.exception("scrape %s failed: %s", r["id"], e)
+            if idx != len(rows) - 1:
+                await asyncio.sleep(random.uniform(5, 15))
 
 async def periodic_scrape():
     while True:
