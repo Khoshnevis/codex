@@ -44,6 +44,16 @@ async def fetch_html(url: str, session: aiohttp.ClientSession | None = None) -> 
         await session.close()
     return html
 
+
+async def test_cookie(session: aiohttp.ClientSession | None = None) -> bool:
+    """Return True if the stored auth cookie grants access to user data."""
+    try:
+        html = await fetch_html("https://www.mql5.com/en", session=session)
+    except Exception:
+        return False
+    soup = BeautifulSoup(html, "lxml")
+    return soup.select_one("ul#profile") is not None
+
 def _num(text):
     if text is None:
         return None
