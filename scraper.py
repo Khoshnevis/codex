@@ -46,16 +46,12 @@ async def fetch_html(url: str, session: aiohttp.ClientSession | None = None) -> 
 
 
 async def test_cookie(session: aiohttp.ClientSession | None = None) -> bool:
-    """Check if the stored auth cookie grants access to user data."""
     try:
         html = await fetch_html("https://www.mql5.com/en", session=session)
     except Exception:
         return False
     soup = BeautifulSoup(html, "lxml")
-    menu = soup.select_one("ul#profile")
-    if not menu:
-        return False
-    return menu.select_one("a.userlink") is not None
+    return soup.select_one("ul#profile") is not None
 
 def _num(text):
     if text is None:
@@ -65,7 +61,6 @@ def _num(text):
     if s.startswith("(") and s.endswith(")"):
         neg = True
         s = s[1:-1]
-    # remove common separators/whitespace
     s = s.replace(",", "").replace(" ", "")
     m = re.search(r"[-+]?\d*\.?\d+", s)
     if not m:
