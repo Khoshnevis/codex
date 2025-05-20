@@ -2,6 +2,7 @@ import re
 import time
 
 import aiohttp
+from contextlib import asynccontextmanager
 from bs4 import BeautifulSoup
 
 import db
@@ -11,15 +12,37 @@ UA = (
     "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
 )
 
-async def fetch_html(url: str) -> str:
+
+async def create_session() -> aiohttp.ClientSession:
+    """Create a preconfigured aiohttp session."""
     headers = {"User-Agent": UA}
     cookie = await db.get_auth_cookie()
     if cookie:
         headers["Cookie"] = cookie
-    async with aiohttp.ClientSession(headers=headers) as s:
-        async with s.get(url) as r:
-            r.raise_for_status()
-            return await r.text()
+    return aiohttp.ClientSession(headers=headers)
+
+
+@asynccontextmanager
+async def session() -> aiohttp.ClientSession:
+    """Async context manager yielding a reusable session."""
+    s = await create_session()
+    try:
+        yield s
+    finally:
+        await s.close()
+
+async def fetch_html(url: str, session: aiohttp.ClientSession | None = None) -> str:
+    """Fetch HTML using provided session or a temporary one."""
+    own = session is None
+    if own:
+        session = await create_session()
+    assert session is not None
+    async with session.get(url) as r:
+        r.raise_for_status()
+        html = await r.text()
+    if own:
+        await session.close()
+    return html
 
 def _num(text):
     if text is None:
@@ -40,8 +63,8 @@ def _num(text):
         return None
     return -num if neg else num
 
-async def scrape(url: str) -> dict:
-    html = await fetch_html(url)
+async def scrape(url: str, session: aiohttp.ClientSession | None = None) -> dict:
+    html = await fetch_html(url, session=session)
     soup = BeautifulSoup(html, "lxml")
 
     def by_label(label_text):
