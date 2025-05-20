@@ -419,7 +419,6 @@ async def syncsubs_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"Found {len(subs)} subscription(s). Added {added} new signal(s)."
     )
 
-
 async def debugsubs_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Fetch subscription page and show parsed data for troubleshooting."""
     uid = update.effective_user.id
@@ -442,7 +441,6 @@ async def debugsubs_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     lines = [f"{s['id']} - {s.get('name','')}" for s in subs]
     text = "Parsed subscriptions:\n" + "\n".join(lines)
     await update.message.reply_text(text)
-
 
 async def showcookie_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id

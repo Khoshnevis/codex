@@ -72,6 +72,7 @@ async def list_subscriptions(session: aiohttp.ClientSession | None = None) -> li
     if not table:
         return results
     rows = table.find_all("div", class_="row")
+    seen = set()
     for row in rows:
         link = None
         sid = None
@@ -79,6 +80,7 @@ async def list_subscriptions(session: aiohttp.ClientSession | None = None) -> li
             href = a.get("href", "")
             m = re.search(r"(?:/|https?://[^/]+/)(?:[a-z]{2}/)?signals/(\d+)", href)
             if m:
+                sid = m.group(1)
                 link = a
                 sid = m.group(1)
                 break
