@@ -379,6 +379,25 @@ async def setcookie_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await db.set_auth_cookie(cookie)
     await update.message.reply_text("Cookie saved.")
 
+
+async def showcookie_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not await db.is_admin(uid):
+        await update.message.reply_text("⛔ Unauthorized")
+        return
+    cookie = await db.get_auth_cookie()
+    text = cookie if cookie else "No cookie set."
+    await update.message.reply_text(text)
+
+
+async def testcookie_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not await db.is_admin(uid):
+        await update.message.reply_text("⛔ Unauthorized")
+        return
+    ok = await scraper.test_cookie()
+    await update.message.reply_text("✅ Cookie valid" if ok else "❌ Cookie invalid")
+
 # ---------- bootstrap ----------
 if __name__ == "__main__":
     if not BOT_TOKEN:
@@ -394,6 +413,8 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("me", me_cmd))
     app.add_handler(CommandHandler("setcookie", setcookie_cmd))
+    app.add_handler(CommandHandler("showcookie", showcookie_cmd))
+    app.add_handler(CommandHandler("testcookie", testcookie_cmd))
     app.add_handler(CallbackQueryHandler(menu_cb))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text))
 
