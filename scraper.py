@@ -44,6 +44,26 @@ async def fetch_html(url: str, session: aiohttp.ClientSession | None = None) -> 
         await session.close()
     return html
 
+
+async def test_cookie(session: aiohttp.ClientSession | None = None) -> bool:
+    """Check whether the stored auth cookie grants access to subscriptions."""
+    own = session is None
+    if own:
+        session = await create_session()
+    assert session is not None
+    try:
+        async with session.get(
+            "https://www.mql5.com/en/signals/subscriptions",
+            allow_redirects=True,
+        ) as r:
+            final = str(r.url)
+            return r.status == 200 and "/en/signals/subscriptions" in final
+    except Exception:
+        return False
+    finally:
+        if own:
+            await session.close()
+
 def _num(text):
     if text is None:
         return None
