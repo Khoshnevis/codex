@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS signals (
     name TEXT,
     weeks INTEGER,
     latest_trade INTEGER,
-    start_year INTEGER
+    start_year INTEGER,
+    auto INTEGER DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS users (
     id          INTEGER PRIMARY KEY,
@@ -45,6 +46,10 @@ CREATE TABLE IF NOT EXISTS config (
 async def init():
     async with aiosqlite.connect(DB_PATH) as db:
         await db.executescript(_SCHEMA)
+        cur = await db.execute("PRAGMA table_info(signals)")
+        cols = [r[1] for r in await cur.fetchall()]
+        if 'auto' not in cols:
+            await db.execute("ALTER TABLE signals ADD COLUMN auto INTEGER DEFAULT 0")
         await db.commit()
 
 async def set_auth_cookie(cookie: str):
@@ -123,10 +128,10 @@ async def list_user_ids():
 # -------- signals --------
 async def list_signals():
     async with aiosqlite.connect(DB_PATH) as db:
-        cur = await db.execute("SELECT id, url, name, weeks, latest_trade, start_year FROM signals ORDER BY id")
+        cur = await db.execute("SELECT id, url, name, weeks, latest_trade, start_year, auto FROM signals ORDER BY id")
         rows = await cur.fetchall()
         return [
-            {"id": r[0], "url": r[1], "name": r[2], "weeks": r[3], "latest_trade": r[4], "start_year": r[5]}
+            {"id": r[0], "url": r[1], "name": r[2], "weeks": r[3], "latest_trade": r[4], "start_year": r[5], "auto": bool(r[6])}
             for r in rows
         ]
 
@@ -135,12 +140,12 @@ async def signal_exists(sig_id: str) -> bool:
         cur = await db.execute("SELECT 1 FROM signals WHERE id = ?", (sig_id,))
         return await cur.fetchone() is not None
 
-async def add_signal(sig_id: str, url: str, name=None, weeks=None, latest_trade=None, start_year=None) -> bool:
+async def add_signal(sig_id: str, url: str, name=None, weeks=None, latest_trade=None, start_year=None, auto=False) -> bool:
     try:
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute(
-                "INSERT INTO signals (id,url,name,weeks,latest_trade,start_year) VALUES (?,?,?,?,?,?)",
-                (sig_id, url, name, weeks, latest_trade, start_year),
+                "INSERT INTO signals (id,url,name,weeks,latest_trade,start_year,auto) VALUES (?,?,?,?,?,?,?)",
+                (sig_id, url, name, weeks, latest_trade, start_year, int(auto)),
             )
             await db.commit()
         return True
@@ -156,7 +161,7 @@ async def remove_signal(sig_id: str) -> int:
 async def update_signal_info(sig_id: str, **kwargs):
     cols = []
     values = []
-    for k in ["name", "weeks", "latest_trade", "start_year"]:
+    for k in ["name", "weeks", "latest_trade", "start_year", "auto"]:
         if k in kwargs and kwargs[k] is not None:
             cols.append(f"{k} = ?")
             values.append(kwargs[k])
