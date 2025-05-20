@@ -71,18 +71,20 @@ async def list_subscriptions(session: aiohttp.ClientSession | None = None) -> li
     if not table:
         return results
     rows = table.find_all("div", class_="row")
+    seen = set()
     for row in rows:
-        link = None
-        for a in row.find_all("a", href=True):
-            href = a.get("href", "")
-            m = re.match(r"^/(?:[a-z]{2}/)?signals/(\d+)$", href)
-            if m:
-                link = a
-                break
+        link = row.find("a", href=re.compile(r"/signals/(\d+)", re.I))
         if not link:
             continue
+        href = link.get("href", "")
+        m = re.search(r"/signals/(\d+)", href)
+        if not m:
+            continue
         sid = m.group(1)
-        url = "https://www.mql5.com" + link["href"]
+        if sid in seen:
+            continue
+        seen.add(sid)
+        url = href if href.startswith("http") else "https://www.mql5.com" + href
         name = link.get_text(strip=True)
         results.append({"id": sid, "url": url, "name": name})
     return results
