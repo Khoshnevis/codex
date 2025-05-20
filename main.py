@@ -66,9 +66,10 @@ async def stats_kb(rows):
         year = r.get("start_year") or (
             latest.get("start_year") if latest else None
         )
+        prefix = 'A' if r.get('auto') else 'M'
         label = " - ".join(
             [
-                str(r["id"]),
+                f"{prefix} {r['id']}",
                 r.get("name") or "?",
                 str(year) if year is not None else "?",
                 f"{growth}%" if growth is not None else "?",
@@ -189,7 +190,7 @@ async def menu_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     elif d == "sig_list":
         rows = await db.list_signals()
         if rows:
-            lines = [f"{r['id']} → {md(r['url'])}" for r in rows]
+            lines = [f"{'A' if r['auto'] else 'M'} {r['id']} → {md(r['url'])}" for r in rows]
             text = "📜 *Signals*:\n" + "\n".join(lines)
         else:
             text = "ℹ None"
@@ -207,7 +208,8 @@ async def menu_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 start = r.get("start_year") or (hist.get("start_year") if hist else None)
                 gtxt = f"{growth}%" if growth is not None else "?"
                 stxt = str(start) if start is not None else "?"
-                info_lines.append(f"{r['id']} - {md(r.get('name') or '')} - {stxt} - {gtxt}")
+                prefix = 'A' if r.get('auto') else 'M'
+                info_lines.append(f"{prefix} {r['id']} - {md(r.get('name') or '')} - {stxt} - {gtxt}")
             text = "📜 *Signals*:\n" + "\n".join(info_lines)
             await q.edit_message_text(
                 "Select signal:",
@@ -318,7 +320,7 @@ async def text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Checking URL…")
         if not await url_ok(url):
             return await update.message.reply_text("URL dead.")
-        await db.add_signal(sid, url)
+        await db.add_signal(sid, url, auto=False)
         await update.message.reply_text("Added.", reply_markup=main_kb())
 
     elif act == "sig_del":
@@ -393,6 +395,26 @@ async def testcookie_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Cookie valid" if ok else "❌ Cookie invalid")
 
 
+async def syncsubs_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not await db.is_admin(uid):
+        await update.message.reply_text("⛔ Unauthorized")
+        return
+    cookie = await db.get_auth_cookie()
+    if not cookie:
+        await update.message.reply_text("No cookie set.")
+        return
+    await update.message.reply_text("Fetching subscriptions…")
+    async with scraper.session() as sess:
+        subs = await scraper.list_subscriptions(session=sess)
+    added = 0
+    for s in subs:
+        if not await db.signal_exists(s["id"]):
+            await db.add_signal(s["id"], s["url"], name=s.get("name"), auto=True)
+            added += 1
+    await update.message.reply_text(f"Added {added} new signal(s).")
+
+
 async def showcookie_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if not await db.is_admin(uid):
@@ -418,6 +440,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("me", me_cmd))
     app.add_handler(CommandHandler("setcookie", setcookie_cmd))
     app.add_handler(CommandHandler("testcookie", testcookie_cmd))
+    app.add_handler(CommandHandler("syncsubs", syncsubs_cmd))
     app.add_handler(CommandHandler("showcookie", showcookie_cmd))
     app.add_handler(CallbackQueryHandler(menu_cb))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text))

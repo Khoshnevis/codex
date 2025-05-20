@@ -63,6 +63,28 @@ async def test_cookie(session: aiohttp.ClientSession | None = None) -> bool:
         if own:
             await session.close()
 
+async def list_subscriptions(session: aiohttp.ClientSession | None = None) -> list[dict]:
+    html = await fetch_html("https://www.mql5.com/en/signals/subscriptions", session=session)
+    soup = BeautifulSoup(html, "lxml")
+    results = []
+    table = soup.find("div", class_="signals-table")
+    if not table:
+        return results
+    rows = table.find_all("div", class_="row")
+    for row in rows:
+        link = row.find("a", href=re.compile(r"/signals/(\d+)") )
+        if not link:
+            continue
+        href = link.get("href")
+        m = re.search(r"/signals/(\d+)", href)
+        if not m:
+            continue
+        sid = m.group(1)
+        url = "https://www.mql5.com" + href
+        name = link.get_text(strip=True)
+        results.append({"id": sid, "url": url, "name": name})
+    return results
+
 def _num(text):
     if text is None:
         return None
