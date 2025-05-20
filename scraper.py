@@ -46,12 +46,22 @@ async def fetch_html(url: str, session: aiohttp.ClientSession | None = None) -> 
 
 
 async def test_cookie(session: aiohttp.ClientSession | None = None) -> bool:
+    own = session is None
+    if own:
+        session = await create_session()
+    assert session is not None
     try:
-        html = await fetch_html("https://www.mql5.com/en", session=session)
+        async with session.get(
+            "https://www.mql5.com/en/signals/subscriptions",
+            allow_redirects=True,
+        ) as r:
+            final = str(r.url)
+            return r.status == 200 and "/en/signals/subscriptions" in final
     except Exception:
         return False
-    soup = BeautifulSoup(html, "lxml")
-    return soup.select_one("ul#profile") is not None
+    finally:
+        if own:
+            await session.close()
 
 def _num(text):
     if text is None:
