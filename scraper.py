@@ -46,7 +46,6 @@ async def fetch_html(url: str, session: aiohttp.ClientSession | None = None) -> 
 
 
 async def test_cookie(session: aiohttp.ClientSession | None = None) -> bool:
-    """Check whether the stored auth cookie grants access to subscriptions."""
     own = session is None
     if own:
         session = await create_session()
@@ -72,7 +71,6 @@ def _num(text):
     if s.startswith("(") and s.endswith(")"):
         neg = True
         s = s[1:-1]
-    # remove common separators/whitespace
     s = s.replace(",", "").replace(" ", "")
     m = re.search(r"[-+]?\d*\.?\d+", s)
     if not m:

@@ -385,6 +385,9 @@ async def testcookie_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not await db.is_admin(uid):
         await update.message.reply_text("⛔ Unauthorized")
         return
+    cookie = await db.get_auth_cookie()
+    if not cookie:
+        return await update.message.reply_text("No cookie set.")
     async with scraper.session() as sess:
         ok = await scraper.test_cookie(session=sess)
     await update.message.reply_text("✅ Cookie valid" if ok else "❌ Cookie invalid")
