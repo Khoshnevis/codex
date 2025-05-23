@@ -66,23 +66,30 @@ async def test_cookie(session: aiohttp.ClientSession | None = None) -> bool:
 async def list_subscriptions(session: aiohttp.ClientSession | None = None) -> list[dict]:
     html = await fetch_html("https://www.mql5.com/en/signals/subscriptions", session=session)
     soup = BeautifulSoup(html, "lxml")
-    results = []
+    results: list[dict] = []
+    seen: set[str] = set()
     table = soup.find("div", class_="signals-table")
     if not table:
         return results
     rows = table.find_all("div", class_="row")
+    seen = set()
     for row in rows:
         link = None
+        sid = None
         for a in row.find_all("a", href=True):
             href = a.get("href", "")
-            m = re.match(r"^/(?:[a-z]{2}/)?signals/(\d+)$", href)
+            m = re.search(r"(?:/|https?://[^/]+/)(?:[a-z]{2}/)?signals/(\d+)", href)
             if m:
+                sid = m.group(1)
                 link = a
+                sid = m.group(1)
                 break
-        if not link:
+        if not link or not sid or sid in seen:
             continue
-        sid = m.group(1)
-        url = "https://www.mql5.com" + link["href"]
+        seen.add(sid)
+        url = href.split("?")[0]
+        if not url.startswith("http"):
+            url = "https://www.mql5.com" + url
         name = link.get_text(strip=True)
         results.append({"id": sid, "url": url, "name": name})
     return results
