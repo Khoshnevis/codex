@@ -406,13 +406,43 @@ async def syncsubs_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     await update.message.reply_text("Fetching subscriptions…")
     async with scraper.session() as sess:
+        if not await scraper.test_cookie(session=sess):
+            await update.message.reply_text("❌ Cookie invalid")
+            return
         subs = await scraper.list_subscriptions(session=sess)
     added = 0
     for s in subs:
         if not await db.signal_exists(s["id"]):
             await db.add_signal(s["id"], s["url"], name=s.get("name"), auto=True)
             added += 1
-    await update.message.reply_text(f"Added {added} new signal(s).")
+    await update.message.reply_text(
+        f"Found {len(subs)} subscription(s). Added {added} new signal(s)."
+    )
+
+
+async def debugsubs_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Show raw subscription page HTML and parsed IDs for troubleshooting."""
+    uid = update.effective_user.id
+    if not await db.is_admin(uid):
+        await update.message.reply_text("⛔ Unauthorized")
+        return
+    cookie = await db.get_auth_cookie()
+    if not cookie:
+        await update.message.reply_text("No cookie set.")
+        return
+    await update.message.reply_text("Fetching subscription page…")
+    async with scraper.session() as sess:
+        html = await scraper.fetch_html(
+            "https://www.mql5.com/en/signals/subscriptions", session=sess
+        )
+        subs = await scraper.list_subscriptions(session=sess)
+    ids = ", ".join(s["id"] for s in subs) if subs else "None"
+    preview = html[:3500].replace("`", "\u200b`")
+    text = (
+        f"Found {len(subs)} subscription(s): {ids}\n"
+        f"\n```\n{preview}\n```"
+    )
+    await update.message.reply_text(text, parse_mode="Markdown")
 
 
 async def showcookie_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -441,6 +471,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("setcookie", setcookie_cmd))
     app.add_handler(CommandHandler("testcookie", testcookie_cmd))
     app.add_handler(CommandHandler("syncsubs", syncsubs_cmd))
+    app.add_handler(CommandHandler("debugsubs", debugsubs_cmd))
     app.add_handler(CommandHandler("showcookie", showcookie_cmd))
     app.add_handler(CallbackQueryHandler(menu_cb))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text))
