@@ -419,7 +419,6 @@ async def syncsubs_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"Found {len(subs)} subscription(s). Added {added} new signal(s)."
     )
 
-
 async def showcookie_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if not await db.is_admin(uid):
@@ -428,6 +427,23 @@ async def showcookie_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     cookie = await db.get_auth_cookie()
     text = cookie if cookie else "No cookie set."
     await update.message.reply_text(text)
+
+async def balance_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not await db.is_admin(uid):
+        await update.message.reply_text("⛔ Unauthorized")
+        return
+    cookie = await db.get_auth_cookie()
+    if not cookie:
+        await update.message.reply_text("No cookie set.")
+        return
+    async with scraper.session() as sess:
+        bal, locked = await scraper.fetch_balance(session=sess)
+    if bal is None:
+        await update.message.reply_text("Failed to fetch balance.")
+    else:
+        locked_txt = f" (locked: {locked})" if locked is not None else ""
+        await update.message.reply_text(f"Balance: {bal}{locked_txt}")
 
 # ---------- bootstrap ----------
 if __name__ == "__main__":
@@ -447,6 +463,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("testcookie", testcookie_cmd))
     app.add_handler(CommandHandler("syncsubs", syncsubs_cmd))
     app.add_handler(CommandHandler("showcookie", showcookie_cmd))
+    app.add_handler(CommandHandler("balance", balance_cmd))
     app.add_handler(CallbackQueryHandler(menu_cb))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text))
 
