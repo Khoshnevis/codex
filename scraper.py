@@ -176,3 +176,17 @@ async def scrape(url: str, session: aiohttp.ClientSession | None = None) -> dict
         "profit_trades": int(profit_trades) if profit_trades is not None else None,
         "loss_trades": int(loss_trades) if loss_trades is not None else None,
     }
+
+
+async def fetch_balance(session: aiohttp.ClientSession | None = None) -> tuple[float | None, float | None]:
+    """Return account balance and locked amount."""
+    html = await fetch_html(
+        "https://www.mql5.com/en/users/ialicheraghii/accounting/topup",
+        session=session,
+    )
+    soup = BeautifulSoup(html, "lxml")
+    real_el = soup.find("em", class_="realBalance")
+    locked_el = soup.find("em", class_="lockedBalance")
+    balance = _num(real_el.get_text() if real_el else None)
+    locked = _num(locked_el.get_text() if locked_el else None)
+    return balance, locked
