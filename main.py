@@ -419,7 +419,6 @@ async def syncsubs_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"Found {len(subs)} subscription(s). Added {added} new signal(s)."
     )
 
-
 async def showcookie_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if not await db.is_admin(uid):
@@ -428,7 +427,6 @@ async def showcookie_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     cookie = await db.get_auth_cookie()
     text = cookie if cookie else "No cookie set."
     await update.message.reply_text(text)
-
 
 async def balance_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
